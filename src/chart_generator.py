@@ -120,6 +120,11 @@ def aggregate_data(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
     group_by = chart_spec.get("group_by")
     aggregation = chart_spec.get("aggregation", "sum")
 
+    allowed_aggregations = ["sum", "mean", "count"]
+
+    if aggregation not in allowed_aggregations:
+        aggregation = "sum"
+
     if x is None:
         raise ValueError("The AI did not choose an x-axis column.")
 
@@ -141,6 +146,8 @@ def aggregate_data(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
     if aggregation == "count":
         result = df.groupby(group_columns).size().reset_index(name="value")
     else:
+        df = df.copy()
+        df[y] = pd.to_numeric(df[y], errors="coerce")
         result = df.groupby(group_columns)[y].agg(aggregation).reset_index()
         result = result.rename(columns={y: "value"})
 
@@ -160,7 +167,7 @@ def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
     filtered_df = apply_exclusions(filtered_df, chart_spec)
     filtered_df = apply_numeric_filters(filtered_df, chart_spec)
 
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(9, 5))
 
     if chart_type == "histogram":
         if y and y in filtered_df.columns:
@@ -170,10 +177,13 @@ def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
         else:
             raise ValueError("Histogram requires a numeric column.")
 
-        ax.hist(filtered_df[numeric_col].dropna(), bins=20)
+        values = pd.to_numeric(filtered_df[numeric_col], errors="coerce").dropna()
+
+        ax.hist(values, bins=20)
         ax.set_title(title)
         ax.set_xlabel(numeric_col)
         ax.set_ylabel("Frequency")
+        plt.tight_layout()
         return fig
 
     if chart_type == "boxplot":
@@ -183,7 +193,9 @@ def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
         if not y or y not in filtered_df.columns:
             raise ValueError("Boxplot requires a valid numeric y column.")
 
-        plot_df = filtered_df[[x, y]].dropna()
+        plot_df = filtered_df[[x, y]].copy()
+        plot_df[y] = pd.to_numeric(plot_df[y], errors="coerce")
+        plot_df = plot_df.dropna()
 
         grouped = plot_df.groupby(x)[y]
         groups = [group.values for _, group in grouped]
@@ -233,6 +245,7 @@ def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
 
         ax.pie(values, labels=labels, autopct="%1.1f%%")
         ax.set_title(title)
+        plt.tight_layout()
         return fig
 
     if chart_type == "grouped_bar":
@@ -281,7 +294,10 @@ def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
 
             pivot_data.plot(kind="area", ax=ax)
         else:
-            ax.fill_between(chart_data[x].astype(str), chart_data["value"])
+            ax.fill_between(
+                chart_data[x].astype(str),
+                chart_data["value"]
+            )
 
         ax.set_title(title)
         ax.set_xlabel(x)
