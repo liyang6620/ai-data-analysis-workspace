@@ -4,6 +4,8 @@ An AI-powered data analysis platform for CSV datasets built with Streamlit and O
 
 This project enables users to upload datasets, explore data quality, ask analytical questions in natural language, automatically generate visualisations, receive AI-generated chart explanations, and export analytical reports.
 
+https://ai-data-analysis-workspace-j8qcctkchziuqghezkaxjm.streamlit.app/
+
 ---
 
 # Features
