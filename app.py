@@ -222,34 +222,48 @@ if "latest_chart_explanation" not in st.session_state:
 if "latest_report" not in st.session_state:
     st.session_state.latest_report = ""
 
+if "chart_question" not in st.session_state:
+    st.session_state.chart_question = ""
+
 if "uploaded_file_name" not in st.session_state:
     st.session_state.uploaded_file_name = None
-    
+
 # HELPERS
+
+def sync_page_from_radio():
+    st.session_state.page_index = pages.index(
+        st.session_state.main_navigation_radio
+    )
+
 
 def go_previous():
     if st.session_state.page_index > 0:
         st.session_state.page_index -= 1
+        st.session_state.main_navigation_radio = pages[
+            st.session_state.page_index
+        ]
 
 
 def go_next():
     if st.session_state.page_index < len(pages) - 1:
         st.session_state.page_index += 1
+        st.session_state.main_navigation_radio = pages[
+            st.session_state.page_index
+        ]
 
 
 def set_ai_tool(tool):
     st.session_state.ai_tool = tool
 
 
-def get_suggested_placeholder(default_text):
-    """Use AI-suggested questions as placeholder text if available."""
-
+def get_placeholder(default_examples):
+    """Use AI-suggested questions as placeholder examples when available."""
     if st.session_state.suggested_questions:
         return "\n".join(
             [f"Example: {question}" for question in st.session_state.suggested_questions]
         )
 
-    return default_text
+    return default_examples
 
 
 def get_chart_data_summary(df, chart_spec):
@@ -273,7 +287,6 @@ def get_chart_data_summary(df, chart_spec):
             "error": str(e)
         }
 
-
 # SIDEBAR
 
 with st.sidebar:
@@ -291,11 +304,11 @@ with st.sidebar:
         "Navigation",
         pages,
         index=st.session_state.page_index,
-        key="main_navigation_radio"
+        key="main_navigation_radio",
+        on_change=sync_page_from_radio
     )
 
-    st.session_state.page_index = pages.index(page)
-
+    page = pages[st.session_state.page_index]
 
 # HEADER
 
@@ -632,16 +645,14 @@ if uploaded_file is not None:
             </div>
             """, unsafe_allow_html=True)
 
-            assistant_placeholder = get_suggested_placeholder(
-                "Example: How can I find the highest estimate in 2010?\n"
-                "Example: Give me Python code to plot arrivals and departures by month.\n"
-                "Example: How can I calculate net migration using this dataset?"
-            )
-
             user_question = st.text_area(
                 "Your question",
                 height=180,
-                placeholder=assistant_placeholder,
+                placeholder=get_placeholder(
+                    "Example: How can I find the highest estimate in 2010?\n"
+                    "Example: Give me Python code to plot arrivals and departures by month.\n"
+                    "Example: How can I calculate net migration using this dataset?"
+                ),
                 key="assistant_question"
             )
 
@@ -693,16 +704,14 @@ if uploaded_file is not None:
             </div>
             """, unsafe_allow_html=True)
 
-            chart_placeholder = get_suggested_placeholder(
-                "Example: Show the distribution of estimate by visa using a boxplot, excluding totals and only include estimate values under 2000.\n"
-                "Example: Show which visa categories contribute the most, split by citizenship, excluding totals.\n"
-                "Example: Show migration trends over time."
-            )
-
             chart_question = st.text_area(
                 "Describe the chart you want",
                 height=180,
-                placeholder=chart_placeholder,
+                placeholder=get_placeholder(
+                    "Example: Show the distribution of estimate by visa using a boxplot, excluding totals and only include estimate values under 2000.\n"
+                    "Example: Show which visa categories contribute the most, split by citizenship, excluding totals.\n"
+                    "Example: Show migration trends over time."
+                ),
                 key="chart_question"
             )
 
