@@ -24,18 +24,14 @@ from src.insight_agent import (
     generate_analysis_report
 )
 
-# =========================================================
 # PAGE CONFIG
-# =========================================================
 
 st.set_page_config(
     page_title="AI Analysis Workspace",
     layout="wide"
 )
 
-# =========================================================
 # STYLING
-# =========================================================
 
 st.markdown("""
 <style>
@@ -190,9 +186,7 @@ h1, h2, h3 {
 </style>
 """, unsafe_allow_html=True)
 
-# =========================================================
 # PAGES
-# =========================================================
 
 pages = [
     "Overview",
@@ -202,9 +196,7 @@ pages = [
     "AI Workspace"
 ]
 
-# =========================================================
 # SESSION STATE
-# =========================================================
 
 if "page_index" not in st.session_state:
     st.session_state.page_index = 0
@@ -232,9 +224,8 @@ if "latest_report" not in st.session_state:
 
 if "uploaded_file_name" not in st.session_state:
     st.session_state.uploaded_file_name = None
-# =========================================================
+    
 # HELPERS
-# =========================================================
 
 def go_previous():
     if st.session_state.page_index > 0:
@@ -282,9 +273,8 @@ def get_chart_data_summary(df, chart_spec):
             "error": str(e)
         }
 
-# =========================================================
+
 # SIDEBAR
-# =========================================================
 
 with st.sidebar:
 
@@ -306,9 +296,8 @@ with st.sidebar:
 
     st.session_state.page_index = pages.index(page)
 
-# =========================================================
+
 # HEADER
-# =========================================================
 
 st.markdown(
     '<div class="main-title">AI-Powered Data Analysis Platform</div>',
@@ -320,9 +309,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# =========================================================
 # MAIN APP
-# =========================================================
 
 if uploaded_file is not None:
 
@@ -359,9 +346,7 @@ if uploaded_file is not None:
 
     st.success("Dataset uploaded successfully.")
 
-    # =====================================================
     # OVERVIEW
-    # =====================================================
 
     if page == "Overview":
 
@@ -416,9 +401,7 @@ if uploaded_file is not None:
 
             st.dataframe(column_info, use_container_width=True)
 
-    # =====================================================
     # DATA QUALITY
-    # =====================================================
 
     elif page == "Data Quality":
 
@@ -449,9 +432,7 @@ if uploaded_file is not None:
 
         st.json(quality_summary)
 
-    # =====================================================
     # INSIGHTS
-    # =====================================================
 
     elif page == "Insights":
 
@@ -479,9 +460,7 @@ if uploaded_file is not None:
         else:
             st.info("No suggested questions available yet.")
 
-    # =====================================================
     # VISUALISATION
-    # =====================================================
 
     elif page == "Visualisation":
 
@@ -589,9 +568,7 @@ if uploaded_file is not None:
 
                 st.pyplot(fig)
 
-    # =====================================================
     # AI WORKSPACE
-    # =====================================================
 
     elif page == "AI Workspace":
 
@@ -848,9 +825,7 @@ if uploaded_file is not None:
                 use_container_width=True
             )
 
-    # =====================================================
     # NAVIGATION BUTTONS
-    # =====================================================
 
     st.divider()
 
