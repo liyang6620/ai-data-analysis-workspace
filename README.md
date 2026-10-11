@@ -1,5 +1,7 @@
 # AI Data Analysis Workspace
 
+[![CI](https://github.com/liyang6620/ai-data-analysis-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/liyang6620/ai-data-analysis-workspace/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 An AI-powered data analysis platform for CSV datasets built with Streamlit and OpenAI.
 
 This project enables users to upload datasets, explore data quality, ask analytical questions in natural language, automatically generate visualisations, receive AI-generated chart explanations, and export analytical reports.

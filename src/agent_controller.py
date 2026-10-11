@@ -7,7 +7,7 @@ def prepare_dataset_context(df: pd.DataFrame) -> dict:
     numeric_summary = df.describe(include="number").round(2).to_dict()
 
     categorical_summary = {}
-    categorical_cols = df.select_dtypes(include=["object", "category"]).columns
+    categorical_cols = df.select_dtypes(include=["object", "str", "category"]).columns
 
     for col in categorical_cols:
         categorical_summary[col] = df[col].value_counts().head(10).to_dict()
