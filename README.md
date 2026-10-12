@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/liyang6620/ai-data-analysis-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/liyang6620/ai-data-analysis-workspace/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB.svg)](https://www.python.org/)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg)](https://www.python.org/)
 
 An AI-assisted Streamlit workspace for exploring CSV datasets, assessing data
 quality, generating charts and turning analytical work into a downloadable report.
@@ -71,7 +71,7 @@ aggregation and Matplotlib functions.
 
 ## Technology
 
-- Python 3.12
+- Python 3.11 or 3.12
 - Streamlit
 - Pandas and NumPy
 - Matplotlib
