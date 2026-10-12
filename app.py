@@ -194,7 +194,7 @@ h1, h2, h3 {
     border-radius: 12px;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 480px) {
     html, body, .stApp {
         overflow-x: hidden;
     }
