@@ -3,11 +3,15 @@
 [![CI](https://github.com/liyang6620/ai-data-analysis-workspace/actions/workflows/ci.yml/badge.svg)](https://github.com/liyang6620/ai-data-analysis-workspace/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg)](https://www.python.org/)
+[![Release](https://img.shields.io/github/v/release/liyang6620/ai-data-analysis-workspace?label=release)](https://github.com/liyang6620/ai-data-analysis-workspace/releases)
 
 An AI-assisted Streamlit workspace for exploring CSV datasets, assessing data
 quality, generating charts and turning analytical work into a downloadable report.
 
 [Open the live demo](https://ai-data-analysis-workspace-j8qcctkchziuqghezkaxjm.streamlit.app/)
+
+**Project status:** Stable demonstration release. The current feature set is frozen;
+maintenance is limited to security, dependency and deployment compatibility fixes.
 
 The included retail dataset makes the core workflow immediately testable without
 an account, an upload or an OpenAI API key. AI features are optional and only run
@@ -23,6 +27,11 @@ The insight workspace calculates numeric ranges, leading categories and guided
 analysis questions without making an API call.
 
 ![Automatic dataset insights](docs/screenshots/insights.png)
+
+The AI workspace turns a compound natural-language request into a validated chart
+specification, renders it without executing generated code and explains the result.
+
+![AI-generated stacked revenue chart](docs/screenshots/ai-chart.png)
 
 ## Product Workflow
 
@@ -41,7 +50,8 @@ analysis questions without making an API call.
 - Local-first analysis: profiling, quality checks, insights, suggestions and manual
   visualisation do not require a paid API.
 - Bounded AI context: only a capped schema summary, category sample and row sample
-  are sent to the configured model.
+  are sent to the configured model. Bounded category-level aggregates support factual
+  comparisons without transmitting the complete dataset.
 - Constrained chart execution: model output selects from supported chart types,
   aggregations and filters rather than executing generated Python code.
 - Intent-aware AI workspace: ordinary chart requests entered in question mode are
@@ -148,9 +158,11 @@ to `main`.
 ```text
 .
 |-- app.py
+|-- CHANGELOG.md
 |-- data/
 |   `-- demo_sales.csv
 |-- docs/screenshots/
+|   |-- ai-chart.png
 |   |-- insights.png
 |   `-- overview.png
 |-- src/
@@ -174,14 +186,15 @@ to `main`.
 - Uploaded files remain in the current Streamlit session; this repository does not
   implement a database or persistent dataset storage.
 - Local analysis stays inside the app process. When an AI action is requested, a
-  bounded summary containing column metadata, statistics, category counts and up to
-  five sample rows is sent to OpenAI.
+  bounded summary containing column metadata, statistics, category counts,
+  category-level numeric aggregates and up to five sample rows is sent to OpenAI.
 - Do not upload secrets, regulated information or personal data to the public demo.
 - CSV parsing is intentionally limited to 10 MB for predictable demo performance.
 - AI output can be inaccurate and should be reviewed before operational use.
 
 See [SECURITY.md](SECURITY.md) for private vulnerability reporting and
-[CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow.
+[CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow. Release history is
+recorded in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

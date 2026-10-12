@@ -48,6 +48,43 @@ def test_dataset_context_is_bounded(sample_frame):
     assert len(result["sample_rows"]) <= 5
 
 
+def test_dataset_context_includes_grouped_metrics_for_factual_ai_answers():
+    frame = pd.DataFrame(
+        {
+            "region": ["North", "North", "South"],
+            "revenue": [100, 150, 90],
+            "orders": [10, 15, 9],
+        }
+    )
+
+    result = prepare_dataset_context(frame)
+
+    assert result["grouped_numeric_summary"]["region"]["North"] == {
+        "revenue": {"count": 2, "sum": 250.0, "mean": 125.0},
+        "orders": {"count": 2, "sum": 25.0, "mean": 12.5},
+    }
+
+
+def test_grouped_dataset_context_stays_bounded():
+    frame = pd.DataFrame(
+        {
+            **{f"category_{index}": [f"value_{row}" for row in range(10)]
+               for index in range(10)},
+            **{f"metric_{index}": list(range(10)) for index in range(10)},
+        }
+    )
+
+    result = prepare_dataset_context(frame)["grouped_numeric_summary"]
+
+    assert len(result) == 8
+    assert all(len(category_values) <= 5 for category_values in result.values())
+    assert all(
+        len(metrics) <= 8
+        for category_values in result.values()
+        for metrics in category_values.values()
+    )
+
+
 def test_text_only_dataset_context_is_supported():
     frame = pd.DataFrame({"category": ["A", "B"], "status": ["open", "closed"]})
 

@@ -3,6 +3,8 @@ import pandas as pd
 MAX_CONTEXT_COLUMNS = 50
 MAX_CATEGORY_VALUES = 5
 MAX_SAMPLE_ROWS = 5
+MAX_GROUPBY_COLUMNS = 8
+MAX_GROUPED_NUMERIC_COLUMNS = 8
 
 
 def _compact_value(value):
@@ -13,6 +15,46 @@ def _compact_value(value):
     if isinstance(value, str):
         return value[:160]
     return value
+
+
+def _grouped_numeric_summary(
+    context_df: pd.DataFrame,
+    categorical_columns: list[str],
+    numeric_columns: list[str],
+) -> dict:
+    """Create bounded category-level metrics for factual AI comparisons."""
+
+    summaries = {}
+    for category in categorical_columns[:MAX_GROUPBY_COLUMNS]:
+        top_values = (
+            context_df[category]
+            .dropna()
+            .value_counts()
+            .head(MAX_CATEGORY_VALUES)
+            .index
+        )
+        category_summary = {}
+        for category_value in top_values:
+            category_rows = context_df[context_df[category] == category_value]
+            numeric_summary = {}
+            for numeric_column in numeric_columns[:MAX_GROUPED_NUMERIC_COLUMNS]:
+                values = pd.to_numeric(
+                    category_rows[numeric_column],
+                    errors="coerce",
+                ).dropna()
+                if values.empty:
+                    continue
+                numeric_summary[numeric_column] = {
+                    "count": int(values.count()),
+                    "sum": round(float(values.sum()), 2),
+                    "mean": round(float(values.mean()), 2),
+                }
+            if numeric_summary:
+                category_summary[str(category_value)[:160]] = numeric_summary
+        if category_summary:
+            summaries[category] = category_summary
+
+    return summaries
 
 
 def prepare_dataset_context(df: pd.DataFrame) -> dict:
@@ -56,6 +98,11 @@ def prepare_dataset_context(df: pd.DataFrame) -> dict:
         "missing_values": missing_values,
         "numeric_summary": numeric_summary,
         "top_categories": categorical_summary,
+        "grouped_numeric_summary": _grouped_numeric_summary(
+            context_df,
+            categorical_cols.tolist(),
+            numeric_df.columns.tolist(),
+        ),
         "sample_rows": sample_rows
     }
 
