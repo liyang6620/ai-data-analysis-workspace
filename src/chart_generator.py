@@ -1,15 +1,18 @@
+import matplotlib
 import pandas as pd
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
 def get_numeric_columns(df: pd.DataFrame) -> list:
     """Return numeric columns from the dataset."""
-    return df.select_dtypes(include=["int64", "float64"]).columns.tolist()
+    return df.select_dtypes(include="number").columns.tolist()
 
 
 def get_categorical_columns(df: pd.DataFrame) -> list:
     """Return categorical columns from the dataset."""
-    return df.select_dtypes(include=["object", "category"]).columns.tolist()
+    return df.select_dtypes(include=["object", "str", "category"]).columns.tolist()
 
 
 def apply_filter(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
@@ -34,9 +37,9 @@ def apply_filter(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
     elif filter_operator == "notequals":
         mask = col != val
     elif filter_operator == "contains":
-        mask = col.str.contains(val, na=False)
+        mask = col.str.contains(val, na=False, regex=False)
     elif filter_operator == "notcontains":
-        mask = ~col.str.contains(val, na=False)
+        mask = ~col.str.contains(val, na=False, regex=False)
     else:
         return df
 
@@ -94,20 +97,29 @@ def apply_numeric_filters(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
 
         filtered_df[column] = pd.to_numeric(filtered_df[column], errors="coerce")
 
+        if operator == "between":
+            if not isinstance(value, list) or len(value) != 2:
+                continue
+            bounds = pd.to_numeric(pd.Series(value), errors="coerce")
+            if bounds.isna().any():
+                continue
+            filtered_df = filtered_df[
+                (filtered_df[column] >= bounds.iloc[0])
+                & (filtered_df[column] <= bounds.iloc[1])
+            ]
+            continue
+
+        numeric_value = pd.to_numeric(value, errors="coerce")
+        if pd.isna(numeric_value):
+            continue
         if operator == "lt":
-            filtered_df = filtered_df[filtered_df[column] < value]
+            filtered_df = filtered_df[filtered_df[column] < numeric_value]
         elif operator == "lte":
-            filtered_df = filtered_df[filtered_df[column] <= value]
+            filtered_df = filtered_df[filtered_df[column] <= numeric_value]
         elif operator == "gt":
-            filtered_df = filtered_df[filtered_df[column] > value]
+            filtered_df = filtered_df[filtered_df[column] > numeric_value]
         elif operator == "gte":
-            filtered_df = filtered_df[filtered_df[column] >= value]
-        elif operator == "between":
-            if isinstance(value, list) and len(value) == 2:
-                filtered_df = filtered_df[
-                    (filtered_df[column] >= value[0]) &
-                    (filtered_df[column] <= value[1])
-                ]
+            filtered_df = filtered_df[filtered_df[column] >= numeric_value]
 
     return filtered_df
 
@@ -210,7 +222,7 @@ def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
         return fig
 
     if chart_type == "heatmap":
-        numeric_df = filtered_df.select_dtypes(include=["int64", "float64"])
+        numeric_df = filtered_df.select_dtypes(include="number")
 
         if numeric_df.shape[1] < 2:
             raise ValueError("Heatmap requires at least two numeric columns.")
@@ -229,6 +241,27 @@ def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
 
         ax.set_title(title)
         fig.colorbar(im, ax=ax)
+        plt.tight_layout()
+        return fig
+
+    if chart_type == "scatter":
+        if not x or x not in filtered_df.columns:
+            raise ValueError("Scatter plot requires a valid numeric x column.")
+        if not y or y not in filtered_df.columns:
+            raise ValueError("Scatter plot requires a valid numeric y column.")
+
+        plot_df = filtered_df[[x, y]].copy()
+        plot_df[x] = pd.to_numeric(plot_df[x], errors="coerce")
+        plot_df[y] = pd.to_numeric(plot_df[y], errors="coerce")
+        plot_df = plot_df.dropna()
+        if plot_df.empty:
+            raise ValueError("Scatter plot has no numeric values to display.")
+
+        ax.scatter(plot_df[x], plot_df[y], alpha=0.7)
+        ax.set_title(title)
+        ax.set_xlabel(x)
+        ax.set_ylabel(y)
+        ax.grid(alpha=0.25)
         plt.tight_layout()
         return fig
 
@@ -323,12 +356,6 @@ def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
                     subset["value"],
                     label=str(group_value)
                 )
-            elif chart_type == "scatter":
-                ax.scatter(
-                    subset[x].astype(str),
-                    subset["value"],
-                    label=str(group_value)
-                )
             else:
                 raise ValueError(f"Unsupported chart type: {chart_type}")
 
@@ -339,8 +366,6 @@ def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
             ax.plot(chart_data[x].astype(str), chart_data["value"], marker="o")
         elif chart_type == "bar":
             ax.bar(chart_data[x].astype(str), chart_data["value"])
-        elif chart_type == "scatter":
-            ax.scatter(chart_data[x].astype(str), chart_data["value"])
         else:
             raise ValueError(f"Unsupported chart type: {chart_type}")
 

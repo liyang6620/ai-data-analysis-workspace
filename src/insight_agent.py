@@ -1,4 +1,5 @@
 import json
+import os
 import streamlit as st
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -6,8 +7,32 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-api_key = st.secrets["OPENAI_API_KEY"]
-client = OpenAI(api_key=api_key)
+
+def get_api_key() -> str | None:
+    """Read an API key from the environment or Streamlit secrets."""
+    environment_key = os.getenv("OPENAI_API_KEY", "").strip()
+    if environment_key:
+        return environment_key
+
+    try:
+        secret_key = str(st.secrets.get("OPENAI_API_KEY", "")).strip()
+    except (FileNotFoundError, KeyError):
+        return None
+    return secret_key or None
+
+
+def ai_is_configured() -> bool:
+    return get_api_key() is not None
+
+
+def get_client() -> OpenAI:
+    api_key = get_api_key()
+    if not api_key:
+        raise RuntimeError(
+            "AI features require OPENAI_API_KEY in .env or Streamlit secrets. "
+            "Local profiling and visualisation remain available without it."
+        )
+    return OpenAI(api_key=api_key)
 
 
 def answer_data_question(
@@ -46,7 +71,7 @@ User question:
 {user_question}
 """
 
-    response = client.responses.create(
+    response = get_client().responses.create(
         model="gpt-4.1-mini",
         input=prompt
     )
@@ -140,7 +165,7 @@ User chart request:
 {chart_question}
 """
 
-    response = client.responses.create(
+    response = get_client().responses.create(
         model="gpt-4.1-mini",
         input=prompt
     )
@@ -175,7 +200,7 @@ Dataset context:
 {dataset_context}
 """
 
-    response = client.responses.create(
+    response = get_client().responses.create(
         model="gpt-4.1-mini",
         input=prompt
     )
@@ -224,7 +249,7 @@ Aggregated chart data summary:
 {chart_data_summary}
 """
 
-    response = client.responses.create(
+    response = get_client().responses.create(
         model="gpt-4.1-mini",
         input=prompt
     )
@@ -258,7 +283,7 @@ Report context:
 {report_context}
 """
 
-    response = client.responses.create(
+    response = get_client().responses.create(
         model="gpt-4.1-mini",
         input=prompt
     )

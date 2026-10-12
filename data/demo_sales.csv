@@ -1,0 +1,13 @@
+month,region,channel,revenue,orders,satisfaction
+2026-01,North,Online,48200,412,4.3
+2026-01,South,Retail,39750,365,4.1
+2026-01,Central,Partner,31800,284,3.9
+2026-02,North,Retail,45100,391,4.2
+2026-02,South,Online,52600,438,4.4
+2026-02,Central,Partner,33900,301,4.0
+2026-03,North,Online,57400,466,4.5
+2026-03,South,Partner,36400,319,4.0
+2026-03,Central,Retail,42100,372,4.2
+2026-04,North,Partner,38800,327,4.1
+2026-04,South,Retail,46900,404,4.3
+2026-04,Central,Online,55200,451,4.5

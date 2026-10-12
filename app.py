@@ -1,5 +1,10 @@
+from pathlib import Path
+
+import matplotlib
 import streamlit as st
 import pandas as pd
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 from src.quality_checks import run_quality_checks
@@ -14,9 +19,12 @@ from src.chart_generator import (
 )
 from src.agent_controller import (
     prepare_dataset_context,
-    generate_auto_insights
+    generate_auto_insights,
+    suggest_local_questions
 )
+from src.data_loader import DatasetLoadError, load_csv_dataset
 from src.insight_agent import (
+    ai_is_configured,
     answer_data_question,
     recommend_chart_spec,
     suggest_analysis_questions,
@@ -225,8 +233,8 @@ if "latest_report" not in st.session_state:
 if "chart_question" not in st.session_state:
     st.session_state.chart_question = ""
 
-if "uploaded_file_name" not in st.session_state:
-    st.session_state.uploaded_file_name = None
+if "dataset_fingerprint" not in st.session_state:
+    st.session_state.dataset_fingerprint = None
 
 # HELPERS
 
@@ -274,6 +282,17 @@ def get_chart_data_summary(df, chart_spec):
         filtered_df = apply_exclusions(filtered_df, chart_spec)
         filtered_df = apply_numeric_filters(filtered_df, chart_spec)
 
+        if chart_spec.get("chart_type") == "scatter":
+            x = chart_spec.get("x")
+            y = chart_spec.get("y")
+            if x in filtered_df.columns and y in filtered_df.columns:
+                preview = filtered_df[[x, y]].dropna().head(20)
+                return {
+                    "rows": int(filtered_df.shape[0]),
+                    "columns": [x, y],
+                    "preview": preview.to_dict(orient="records")
+                }
+
         chart_data = aggregate_data(filtered_df, chart_spec)
 
         return {
@@ -293,10 +312,22 @@ with st.sidebar:
 
     st.header("AI Analysis Workspace")
 
-    uploaded_file = st.file_uploader(
-        "Upload CSV file",
-        type=["csv"]
+    data_source = st.radio(
+        "Data source",
+        ["Demo dataset", "Upload CSV"],
+        help="The demo dataset works without an API key."
     )
+
+    if data_source == "Upload CSV":
+        dataset_source = st.file_uploader(
+            "Upload CSV file",
+            type=["csv"],
+            help="UTF-8 compatible CSV, up to 10 MB."
+        )
+        dataset_label = dataset_source.name if dataset_source else None
+    else:
+        dataset_source = Path(__file__).parent / "data" / "demo_sales.csv"
+        dataset_label = "Demo retail sales"
 
     st.divider()
 
@@ -324,19 +355,24 @@ st.markdown(
 
 # MAIN APP
 
-if uploaded_file is not None:
+if dataset_source is not None:
 
-    if st.session_state.uploaded_file_name != uploaded_file.name:
-        st.session_state.uploaded_file_name = uploaded_file.name
-        st.session_state.suggested_questions = []
+    try:
+        df, dataset_fingerprint = load_csv_dataset(dataset_source)
+    except DatasetLoadError as exc:
+        st.error(str(exc))
+        st.info("Choose the demo dataset or upload a valid CSV to continue.")
+        st.stop()
+
+    if st.session_state.dataset_fingerprint != dataset_fingerprint:
+        st.session_state.dataset_fingerprint = dataset_fingerprint
+        st.session_state.suggested_questions = suggest_local_questions(df)
         st.session_state.chat_history = []
         st.session_state.latest_ai_answer = ""
         st.session_state.latest_chart_spec = {}
         st.session_state.latest_chart_explanation = ""
         st.session_state.latest_report = ""
         st.session_state.chart_question = ""
-
-    df = pd.read_csv(uploaded_file)
 
     numeric_columns = get_numeric_columns(df)
     categorical_columns = get_categorical_columns(df)
@@ -349,15 +385,7 @@ if uploaded_file is not None:
 
     dataset_context = prepare_dataset_context(df)
 
-    if not st.session_state.suggested_questions:
-        try:
-            st.session_state.suggested_questions = suggest_analysis_questions(
-                dataset_context
-            )
-        except Exception:
-            st.session_state.suggested_questions = []
-
-    st.success("Dataset uploaded successfully.")
+    st.caption(f"Dataset: {dataset_label}")
 
     # OVERVIEW
 
@@ -392,7 +420,7 @@ if uploaded_file is not None:
             </div>
             """, unsafe_allow_html=True)
 
-            st.dataframe(df.head(), use_container_width=True)
+            st.dataframe(df.head(), width="stretch")
 
         with right_col:
 
@@ -412,7 +440,7 @@ if uploaded_file is not None:
                 "Missing Rate (%)": (df.isnull().mean().values * 100).round(2)
             })
 
-            st.dataframe(column_info, use_container_width=True)
+            st.dataframe(column_info, width="stretch")
 
     # DATA QUALITY
 
@@ -443,7 +471,37 @@ if uploaded_file is not None:
         </div>
         """, unsafe_allow_html=True)
 
-        st.json(quality_summary)
+        missing_by_column = quality_summary["missing_values"]
+        constant_columns = quality_summary["constant_columns"]
+
+        if not missing_by_column and not constant_columns and duplicate_rows == 0:
+            st.success("No missing values, duplicate rows, or constant columns detected.")
+        else:
+            quality_left, quality_right = st.columns(2)
+            with quality_left:
+                st.subheader("Missing Values")
+                if missing_by_column:
+                    missing_table = pd.DataFrame(
+                        [
+                            {
+                                "Column": column,
+                                "Missing Cells": count,
+                                "Missing Rate (%)": round(count / len(df) * 100, 2),
+                            }
+                            for column, count in missing_by_column.items()
+                        ]
+                    )
+                    st.dataframe(missing_table, width="stretch", hide_index=True)
+                else:
+                    st.caption("No missing values detected.")
+
+            with quality_right:
+                st.subheader("Structural Checks")
+                st.write(f"Duplicate rows: **{duplicate_rows}**")
+                if constant_columns:
+                    st.write("Constant columns: " + ", ".join(constant_columns))
+                else:
+                    st.caption("No constant columns detected.")
 
     # INSIGHTS
 
@@ -460,18 +518,79 @@ if uploaded_file is not None:
         </div>
         """, unsafe_allow_html=True)
 
-        if auto_insights:
-            st.json(auto_insights)
-        else:
-            st.info("No automatic insight rules were triggered for this dataset.")
+        numeric_insights = auto_insights.get("numeric_summary", {})
+        category_insights = auto_insights.get("leading_categories", {})
 
-        st.subheader("AI-Suggested Analysis Questions")
+        insight_left, insight_right = st.columns(2)
+        with insight_left:
+            st.subheader("Numeric Ranges")
+            if numeric_insights:
+                numeric_table = pd.DataFrame(
+                    [
+                        {
+                            "Measure": column,
+                            "Minimum": values["minimum"],
+                            "Average": values["average"],
+                            "Maximum": values["maximum"],
+                        }
+                        for column, values in numeric_insights.items()
+                    ]
+                )
+                st.dataframe(numeric_table, width="stretch", hide_index=True)
+            else:
+                st.caption("No numeric columns are available.")
+
+        with insight_right:
+            st.subheader("Leading Categories")
+            if category_insights:
+                category_table = pd.DataFrame(
+                    [
+                        {
+                            "Column": column,
+                            "Most Common Value": values["value"],
+                            "Records": values["count"],
+                        }
+                        for column, values in category_insights.items()
+                    ]
+                )
+                st.dataframe(category_table, width="stretch", hide_index=True)
+            else:
+                st.caption("No categorical columns are available.")
+
+        domain_insights = {
+            key: value
+            for key, value in auto_insights.items()
+            if key not in {"numeric_summary", "leading_categories"}
+        }
+        if domain_insights:
+            with st.expander("Dataset-specific signals"):
+                st.json(domain_insights)
+
+        st.subheader("Suggested Analysis Questions")
 
         if st.session_state.suggested_questions:
             for i, question in enumerate(st.session_state.suggested_questions, start=1):
                 st.write(f"{i}. {question}")
         else:
             st.info("No suggested questions available yet.")
+
+        if st.button(
+            "Refine questions with AI",
+            disabled=not ai_is_configured(),
+            help=(
+                None
+                if ai_is_configured()
+                else "Configure OPENAI_API_KEY to enable AI-generated questions."
+            ),
+        ):
+            try:
+                with st.spinner("Refining questions..."):
+                    st.session_state.suggested_questions = suggest_analysis_questions(
+                        dataset_context
+                    )
+                st.rerun()
+            except Exception:
+                st.error("The AI service could not generate questions. Try again later.")
 
     # VISUALISATION
 
@@ -587,6 +706,13 @@ if uploaded_file is not None:
 
         st.header("AI Workspace")
 
+        ai_ready = ai_is_configured()
+        if not ai_ready:
+            st.info(
+                "AI features are optional and currently unavailable because no API key "
+                "is configured. Dataset profiling and manual charts remain fully available."
+            )
+
         st.markdown("""
         <div class="panel">
             <div class="panel-title">AI Analysis Module</div>
@@ -608,7 +734,7 @@ if uploaded_file is not None:
 
             st.button(
                 "Ask AI Assistant",
-                use_container_width=True,
+                width="stretch",
                 type=assistant_style,
                 key="ai_tool_selector_assistant",
                 on_click=set_ai_tool,
@@ -625,7 +751,7 @@ if uploaded_file is not None:
 
             st.button(
                 "Generate AI Chart",
-                use_container_width=True,
+                width="stretch",
                 type=chart_style,
                 key="ai_tool_selector_chart",
                 on_click=set_ai_tool,
@@ -658,8 +784,9 @@ if uploaded_file is not None:
 
             if st.button(
                 "Ask AI Assistant",
-                use_container_width=True,
-                key="assistant_submit"
+                width="stretch",
+                key="assistant_submit",
+                disabled=not ai_ready
             ):
 
                 if not user_question.strip():
@@ -688,10 +815,9 @@ if uploaded_file is not None:
                             "answer": answer
                         })
 
-                    except Exception as e:
-
+                    except Exception:
                         st.error("AI response failed.")
-                        st.write(e)
+                        st.caption("Check the API configuration and try again.")
 
         else:
 
@@ -717,8 +843,9 @@ if uploaded_file is not None:
 
             if st.button(
                 "Generate AI Chart",
-                use_container_width=True,
-                key="chart_submit"
+                width="stretch",
+                key="chart_submit",
+                disabled=not ai_ready
             ):
 
                 if not chart_question.strip():
@@ -765,10 +892,9 @@ if uploaded_file is not None:
 
                         st.session_state.latest_chart_explanation = chart_explanation
 
-                    except Exception as e:
-
+                    except Exception:
                         st.error("Chart generation failed.")
-                        st.write(e)
+                        st.caption("Check the request, dataset columns, and API configuration.")
 
         st.markdown("<br><br>", unsafe_allow_html=True)
 
@@ -797,8 +923,9 @@ if uploaded_file is not None:
 
         if st.button(
             "Generate Report",
-            use_container_width=True,
-            key="generate_report_button"
+            width="stretch",
+            key="generate_report_button",
+            disabled=not ai_ready
         ):
             report_context = {
                 "dataset_overview": {
@@ -821,9 +948,9 @@ if uploaded_file is not None:
                         report_context
                     )
 
-            except Exception as e:
+            except Exception:
                 st.error("Report generation failed.")
-                st.write(e)
+                st.caption("Check the API configuration and try again.")
 
         if st.session_state.latest_report:
             st.download_button(
@@ -831,7 +958,7 @@ if uploaded_file is not None:
                 data=st.session_state.latest_report,
                 file_name="ai_analysis_report.md",
                 mime="text/markdown",
-                use_container_width=True
+                width="stretch"
             )
 
     # NAVIGATION BUTTONS
@@ -844,7 +971,7 @@ if uploaded_file is not None:
 
         st.button(
             "Previous",
-            use_container_width=True,
+            width="stretch",
             disabled=st.session_state.page_index == 0,
             on_click=go_previous,
             key="previous_button"
@@ -854,7 +981,7 @@ if uploaded_file is not None:
 
         st.button(
             "Next",
-            use_container_width=True,
+            width="stretch",
             disabled=st.session_state.page_index == len(pages) - 1,
             on_click=go_next,
             key="next_button"
@@ -863,5 +990,5 @@ if uploaded_file is not None:
 else:
 
     st.info(
-        "Please upload a CSV file from the sidebar to begin analysis."
+        "Upload a CSV file from the sidebar or choose the demo dataset to begin."
     )
