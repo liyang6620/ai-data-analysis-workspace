@@ -76,11 +76,13 @@ aggregation and Matplotlib functions.
 
 Supported AI chart output is deliberately bounded to line, bar, grouped or stacked
 bar, scatter, pie, histogram, boxplot, area and correlation heatmap charts. It uses
-the current dataset only, existing columns, simple filters and sum, mean or count.
+the current dataset only, existing columns, compound text/numeric filters and sum,
+mean or count. Text filters support single or multi-value matching, and chart
+specifications can request ascending, descending or chronological category ordering.
 Requests for joins, maps, forecasting, 3D output, standalone images or custom
 interactive dashboards are rejected before the model is called. Display limits keep
 high-cardinality charts readable: 50 x-axis categories, 12 pie slices or group values,
-10 numeric filters and 120 title characters.
+10 text filters, 10 numeric filters and 120 title characters.
 
 ## Technology
 

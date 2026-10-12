@@ -132,10 +132,14 @@ Product boundaries:
 Filtering and exclusion rules:
 - Use only columns that exist in the dataset.
 - Do not invent columns.
+- Put categorical or text filters in text_filters. Multiple rules are combined with AND.
+- Supported text operators: equals, notequals, contains, notcontains, startswith, in, notin.
+- Use in with a list when the user requests any of several values, such as North or South.
 - If the user asks to remove totals, unknowns, aggregates, missing categories, or irrelevant categories, put them in exclude_values.
 - exclude_values must be a dictionary where each key is a column name and each value is a list of values to exclude.
 - If the user asks for numeric filtering such as under, below, less than, greater than, over, at least, at most, or between, use numeric_filters.
 - Supported numeric filter operators: lt, lte, gt, gte, between.
+- Set sort_order to chronological for explicit date or time ordering requests; otherwise use auto, ascending, or descending.
 - Use null if no filter is needed.
 - Always return a valid chart specification.
 - Never return an error field.
@@ -148,9 +152,13 @@ The JSON must follow this structure:
   "y": "estimate",
   "group_by": null,
   "aggregation": "sum",
-  "filter_column": null,
-  "filter_operator": null,
-  "filter_value": null,
+  "text_filters": [
+    {{
+      "column": "citizenship",
+      "operator": "in",
+      "value": ["New Zealand", "Australia"]
+    }}
+  ],
   "exclude_values": {{
     "visa": ["TOTAL"],
     "citizenship": ["TOTAL"]
@@ -162,6 +170,7 @@ The JSON must follow this structure:
       "value": 2000
     }}
   ],
+  "sort_order": "auto",
   "title": "Distribution of Estimate by Visa Under 2000"
 }}
 

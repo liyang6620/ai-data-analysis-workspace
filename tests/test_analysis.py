@@ -95,6 +95,30 @@ def test_text_filter_treats_special_characters_literally():
     assert result["label"].tolist() == ["A.B", "A.B extra"]
 
 
+def test_compound_text_filters_support_multiple_values():
+    frame = pd.DataFrame(
+        {
+            "region": ["North", "South", "Central", "North"],
+            "channel": ["Online", "Retail", "Online", "Partner"],
+        }
+    )
+
+    result = apply_filter(
+        frame,
+        {
+            "text_filters": [
+                {"column": "region", "operator": "in", "value": ["North", "South"]},
+                {"column": "channel", "operator": "notin", "value": ["Partner"]},
+            ]
+        },
+    )
+
+    assert result.to_dict(orient="records") == [
+        {"region": "North", "channel": "Online"},
+        {"region": "South", "channel": "Retail"},
+    ]
+
+
 def test_numeric_filter_accepts_numeric_text(sample_frame):
     result = apply_numeric_filters(
         sample_frame,
@@ -132,6 +156,48 @@ def test_chart_spec_is_normalised_and_validated(sample_frame):
     assert result["chart_type"] == "bar"
     assert result["aggregation"] == "mean"
     assert result["title"] == "Average sales"
+
+
+def test_complex_stacked_chart_spec_is_supported():
+    frame = pd.DataFrame(
+        {
+            "month": ["2026-03", "2026-01", "2026-02", "2026-01"],
+            "region": ["North", "North", "South", "Central"],
+            "channel": ["Online", "Retail", "Online", "Partner"],
+            "revenue": [57_400, 45_100, 52_600, 31_800],
+            "orders": [466, 391, 438, 284],
+        }
+    )
+    spec = validate_chart_spec(
+        frame,
+        {
+            "chart_type": "stacked_bar",
+            "x": "month",
+            "y": "revenue",
+            "group_by": "channel",
+            "aggregation": "sum",
+            "text_filters": [
+                {"column": "region", "operator": "in", "value": ["North", "South"]}
+            ],
+            "numeric_filters": [
+                {"column": "orders", "operator": "gt", "value": 300}
+            ],
+            "sort_order": "chronological",
+            "title": "Monthly Revenue by Channel - North vs South",
+        },
+    )
+
+    filtered = apply_numeric_filters(apply_filter(frame, spec), spec)
+    chart_data = aggregate_data(filtered, spec)
+
+    assert chart_data["month"].drop_duplicates().tolist() == [
+        "2026-01",
+        "2026-02",
+        "2026-03",
+    ]
+    figure = render_ai_chart(frame, spec)
+    assert len(figure.axes[0].patches) == 6
+    figure.clear()
 
 
 def test_chart_spec_rejects_unknown_columns(sample_frame):

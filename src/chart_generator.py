@@ -23,10 +23,14 @@ ALLOWED_TEXT_FILTERS = {
     "notequals",
     "contains",
     "notcontains",
+    "in",
+    "notin",
 }
 ALLOWED_NUMERIC_FILTERS = {"lt", "lte", "gt", "gte", "between"}
+ALLOWED_SORT_ORDERS = {"auto", "ascending", "descending", "chronological"}
 MAX_CHART_TITLE_LENGTH = 120
 MAX_FILTER_RULES = 10
+MAX_TEXT_FILTER_VALUES = 100
 
 
 def get_numeric_columns(df: pd.DataFrame) -> list:
@@ -40,34 +44,94 @@ def get_categorical_columns(df: pd.DataFrame) -> list:
 
 
 def apply_filter(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
-    """Apply a simple text filter to the dataset based on the chart specification."""
+    """Apply legacy and multi-rule text filters to the dataset."""
+
+    text_filters = chart_spec.get("text_filters")
+    if not isinstance(text_filters, list):
+        text_filters = []
 
     filter_column = chart_spec.get("filter_column")
-    filter_operator = chart_spec.get("filter_operator")
-    filter_value = chart_spec.get("filter_value")
-
-    if not filter_column or filter_column not in df.columns:
-        return df
+    if filter_column:
+        text_filters = [
+            {
+                "column": filter_column,
+                "operator": chart_spec.get("filter_operator"),
+                "value": chart_spec.get("filter_value"),
+            },
+            *text_filters,
+        ]
 
     filtered_df = df.copy()
+    for rule in text_filters:
+        if not isinstance(rule, dict):
+            continue
 
-    col = filtered_df[filter_column].astype(str).str.strip().str.lower()
-    val = str(filter_value).strip().lower()
+        column = rule.get("column")
+        operator = rule.get("operator")
+        value = rule.get("value")
+        if not column or column not in filtered_df.columns:
+            continue
 
-    if filter_operator == "startswith":
-        mask = col.str.startswith(val)
-    elif filter_operator == "equals":
-        mask = col == val
-    elif filter_operator == "notequals":
-        mask = col != val
-    elif filter_operator == "contains":
-        mask = col.str.contains(val, na=False, regex=False)
-    elif filter_operator == "notcontains":
-        mask = ~col.str.contains(val, na=False, regex=False)
+        col = filtered_df[column].astype(str).str.strip().str.lower()
+        values = value if isinstance(value, list) else [value]
+        normalised_values = [str(item).strip().lower() for item in values]
+
+        if operator == "startswith":
+            mask = col.str.startswith(normalised_values[0])
+        elif operator == "equals":
+            mask = col == normalised_values[0]
+        elif operator == "notequals":
+            mask = col != normalised_values[0]
+        elif operator == "contains":
+            mask = col.str.contains(normalised_values[0], na=False, regex=False)
+        elif operator == "notcontains":
+            mask = ~col.str.contains(normalised_values[0], na=False, regex=False)
+        elif operator == "in":
+            mask = col.isin(normalised_values)
+        elif operator == "notin":
+            mask = ~col.isin(normalised_values)
+        else:
+            continue
+
+        filtered_df = filtered_df[mask]
+
+    return filtered_df
+
+
+def _validate_text_filter(df: pd.DataFrame, rule: dict) -> dict:
+    """Validate and normalise one text-filter rule."""
+
+    if not isinstance(rule, dict):
+        raise TypeError("Each text filter must be an object.")
+
+    normalised = dict(rule)
+    column = _require_column(df, normalised.get("column"), "text filter")
+    operator = str(normalised.get("operator", "")).strip().lower()
+    operator = {"one_of": "in", "not_in": "notin"}.get(operator, operator)
+    if operator not in ALLOWED_TEXT_FILTERS:
+        raise ValueError("The text filter operator is not supported.")
+
+    value = normalised.get("value")
+    if value is None or isinstance(value, dict):
+        raise ValueError("A text filter requires a filter value.")
+
+    values = value if isinstance(value, list) else [value]
+    if not values or any(item is None for item in values):
+        raise ValueError("A text filter requires at least one filter value.")
+    if len(values) > MAX_TEXT_FILTER_VALUES:
+        raise ValueError(
+            f"A text filter can contain at most {MAX_TEXT_FILTER_VALUES} values."
+        )
+    if operator in {"in", "notin"}:
+        normalised["value"] = values
+    elif len(values) != 1:
+        raise ValueError(f"The {operator} text filter accepts one value only.")
     else:
-        return df
+        normalised["value"] = values[0]
 
-    return filtered_df[mask]
+    normalised["column"] = column
+    normalised["operator"] = operator
+    return normalised
 
 
 def apply_exclusions(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
@@ -233,13 +297,27 @@ def validate_chart_spec(df: pd.DataFrame, chart_spec: dict) -> dict:
     filter_operator = spec.get("filter_operator")
     filter_value = spec.get("filter_value")
     if filter_column:
-        _require_column(df, filter_column, "filter")
-        if filter_operator not in ALLOWED_TEXT_FILTERS:
-            raise ValueError("The text filter operator is not supported.")
-        if filter_value is None:
-            raise ValueError("A text filter requires a filter value.")
+        legacy_filter = _validate_text_filter(
+            df,
+            {
+                "column": filter_column,
+                "operator": filter_operator,
+                "value": filter_value,
+            },
+        )
+        spec["filter_operator"] = legacy_filter["operator"]
+        spec["filter_value"] = legacy_filter["value"]
     elif filter_operator is not None or filter_value is not None:
         raise ValueError("Text filter settings require a filter_column.")
+
+    text_filters = spec.get("text_filters") or []
+    if not isinstance(text_filters, list):
+        raise TypeError("text_filters must be a list.")
+    if len(text_filters) > MAX_FILTER_RULES:
+        raise ValueError(f"A chart can use at most {MAX_FILTER_RULES} text filters.")
+    spec["text_filters"] = [
+        _validate_text_filter(df, rule) for rule in text_filters
+    ]
 
     exclusions = spec.get("exclude_values") or {}
     if not isinstance(exclusions, dict):
@@ -276,6 +354,12 @@ def validate_chart_spec(df: pd.DataFrame, chart_spec: dict) -> dict:
                 raise ValueError("Numeric filter values must be single numbers.")
             if pd.isna(pd.to_numeric(value, errors="coerce")):
                 raise ValueError("Numeric filter values must be numbers.")
+
+    sort_order = str(spec.get("sort_order", "auto")).strip().lower()
+    if sort_order not in ALLOWED_SORT_ORDERS:
+        supported = ", ".join(sorted(ALLOWED_SORT_ORDERS))
+        raise ValueError(f"Sort order must be one of: {supported}.")
+    spec["sort_order"] = sort_order
 
     filtered_df = apply_filter(df, spec)
     filtered_df = apply_exclusions(filtered_df, spec)
@@ -364,7 +448,23 @@ def aggregate_data(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
         result = df.groupby(group_columns)[y].agg(aggregation).reset_index()
         result = result.rename(columns={y: "value"})
 
-    return result
+    sort_order = chart_spec.get("sort_order", "auto")
+    if sort_order in {"ascending", "descending"}:
+        result = result.sort_values(
+            group_columns,
+            ascending=sort_order == "ascending",
+            kind="stable",
+        )
+    elif sort_order == "chronological":
+        chronological_values = pd.to_datetime(result[x], errors="coerce")
+        if chronological_values.notna().all():
+            result = (
+                result.assign(_chronological_sort=chronological_values)
+                .sort_values(["_chronological_sort", *group_columns[1:]], kind="stable")
+                .drop(columns="_chronological_sort")
+            )
+
+    return result.reset_index(drop=True)
 
 
 def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
