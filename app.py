@@ -214,16 +214,6 @@ h1, h2, h3 {
         margin-bottom: 1.1rem;
     }
 
-    .panel {
-        border-radius: 14px;
-        padding: 1rem;
-        margin-bottom: 0.85rem;
-    }
-
-    .panel-title {
-        font-size: 1.05rem;
-    }
-
     div[data-testid="stHorizontalBlock"] {
         flex-wrap: wrap !important;
         gap: 0.75rem !important;
@@ -233,11 +223,6 @@ h1, h2, h3 {
         flex: 1 1 100% !important;
         min-width: 100% !important;
         width: 100% !important;
-    }
-
-    [data-testid="metric-container"] {
-        padding: 0.85rem;
-        border-radius: 14px;
     }
 
     div.stButton > button {
@@ -276,7 +261,7 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 if "ai_tool" not in st.session_state:
-    st.session_state.ai_tool = "chart"
+    st.session_state.ai_tool = "assistant"
 
 if "suggested_questions" not in st.session_state:
     st.session_state.suggested_questions = []
@@ -816,50 +801,14 @@ if dataset_source is not None:
         <div class="panel">
             <div class="panel-title">AI Analysis Module</div>
             <div class="panel-text">
-                Describe a visual and receive the rendered chart directly, or ask a focused question about the dataset.
+                Use AI tools to ask analytical questions or automatically generate charts from natural language.
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        st.info(
-            "Charts are rendered directly from validated specifications; generated "
-            "code is never executed."
-        )
-        with st.expander("Supported charts and boundaries"):
-            st.markdown(
-                """
-                - **Supported:** line, bar, grouped or stacked bar, scatter, pie,
-                  histogram, boxplot, area and correlation heatmap.
-                - **Data operations:** current dataset only; existing columns; sum,
-                  mean or count; simple text, exclusion and numeric filters.
-                - **Display limits:** up to 50 x-axis categories, 12 pie slices or
-                  group values, 10 numeric filters and a 120-character title.
-                - **Not supported:** generated-code execution, dataset joins, maps,
-                  forecasting, 3D charts, standalone images or custom interactive
-                  dashboards.
-                """
-            )
-
         tool_col1, tool_col2 = st.columns(2)
 
         with tool_col1:
-
-            chart_style = (
-                "primary"
-                if st.session_state.ai_tool == "chart"
-                else "secondary"
-            )
-
-            st.button(
-                "Create Chart",
-                width="stretch",
-                type=chart_style,
-                key="ai_tool_selector_chart",
-                on_click=set_ai_tool,
-                args=("chart",)
-            )
-
-        with tool_col2:
 
             assistant_style = (
                 "primary"
@@ -868,12 +817,29 @@ if dataset_source is not None:
             )
 
             st.button(
-                "Ask a Question",
+                "Ask AI Assistant",
                 width="stretch",
                 type=assistant_style,
                 key="ai_tool_selector_assistant",
                 on_click=set_ai_tool,
                 args=("assistant",)
+            )
+
+        with tool_col2:
+
+            chart_style = (
+                "primary"
+                if st.session_state.ai_tool == "chart"
+                else "secondary"
+            )
+
+            st.button(
+                "Generate AI Chart",
+                width="stretch",
+                type=chart_style,
+                key="ai_tool_selector_chart",
+                on_click=set_ai_tool,
+                args=("chart",)
             )
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -884,7 +850,7 @@ if dataset_source is not None:
             <div class="panel">
                 <div class="panel-title">Ask Analytical Questions</div>
                 <div class="panel-text">
-                    Ask for explanations, calculations, code guidance or business insights. Chart requests are detected and rendered directly.
+                    Request dataset explanations, Python guidance, analytical interpretation, or business insights.
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -901,7 +867,7 @@ if dataset_source is not None:
             )
 
             if st.button(
-                "Ask Question",
+                "Ask AI Assistant",
                 width="stretch",
                 key="assistant_submit",
                 disabled=not ai_ready
@@ -954,7 +920,7 @@ if dataset_source is not None:
             <div class="panel">
                 <div class="panel-title">Generate AI Visualisations</div>
                 <div class="panel-text">
-                    Describe the result you want. The app turns it into a validated specification and renders the chart directly.
+                    Describe the chart you want in natural language and let the AI recommend and generate it automatically.
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -967,11 +933,17 @@ if dataset_source is not None:
                     "Example: Show which visa categories contribute the most, split by citizenship, excluding totals.\n"
                     "Example: Show migration trends over time."
                 ),
+                help=(
+                    "Supports line, bar, grouped or stacked bar, scatter, pie, "
+                    "histogram, boxplot, area and correlation heatmap charts from "
+                    "the current dataset. Generated code, joins, maps, forecasting, "
+                    "3D charts and custom dashboards are not supported."
+                ),
                 key="chart_question"
             )
 
             if st.button(
-                "Create Chart",
+                "Generate AI Chart",
                 width="stretch",
                 key="chart_submit",
                 disabled=not ai_ready
