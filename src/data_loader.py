@@ -7,7 +7,6 @@ from typing import BinaryIO
 
 import pandas as pd
 
-
 MAX_CSV_BYTES = 10 * 1024 * 1024
 
 

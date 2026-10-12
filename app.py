@@ -1,36 +1,37 @@
 from pathlib import Path
 
 import matplotlib
-import streamlit as st
 import pandas as pd
+import streamlit as st
+from openai import OpenAIError
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from src.quality_checks import run_quality_checks
-from src.chart_generator import (
-    get_numeric_columns,
-    get_categorical_columns,
-    render_ai_chart,
-    apply_filter,
-    apply_exclusions,
-    apply_numeric_filters,
-    aggregate_data
-)
 from src.agent_controller import (
-    prepare_dataset_context,
     generate_auto_insights,
-    suggest_local_questions
+    prepare_dataset_context,
+    suggest_local_questions,
+)
+from src.chart_generator import (
+    aggregate_data,
+    apply_exclusions,
+    apply_filter,
+    apply_numeric_filters,
+    get_categorical_columns,
+    get_numeric_columns,
+    render_ai_chart,
 )
 from src.data_loader import DatasetLoadError, load_csv_dataset
 from src.insight_agent import (
     ai_is_configured,
     answer_data_question,
+    explain_chart_result,
+    generate_analysis_report,
     recommend_chart_spec,
     suggest_analysis_questions,
-    explain_chart_result,
-    generate_analysis_report
 )
+from src.quality_checks import run_quality_checks
 
 # PAGE CONFIG
 
@@ -301,7 +302,7 @@ def get_chart_data_summary(df, chart_spec):
             "preview": chart_data.head(20).to_dict(orient="records")
         }
 
-    except Exception as e:
+    except (KeyError, TypeError, ValueError) as e:
         return {
             "error": str(e)
         }
@@ -589,7 +590,7 @@ if dataset_source is not None:
                         dataset_context
                     )
                 st.rerun()
-            except Exception:
+            except (OpenAIError, RuntimeError, TypeError, ValueError):
                 st.error("The AI service could not generate questions. Try again later.")
 
     # VISUALISATION
@@ -815,7 +816,7 @@ if dataset_source is not None:
                             "answer": answer
                         })
 
-                    except Exception:
+                    except (OpenAIError, RuntimeError, TypeError, ValueError):
                         st.error("AI response failed.")
                         st.caption("Check the API configuration and try again.")
 
@@ -892,7 +893,13 @@ if dataset_source is not None:
 
                         st.session_state.latest_chart_explanation = chart_explanation
 
-                    except Exception:
+                    except (
+                        KeyError,
+                        OpenAIError,
+                        RuntimeError,
+                        TypeError,
+                        ValueError,
+                    ):
                         st.error("Chart generation failed.")
                         st.caption("Check the request, dataset columns, and API configuration.")
 
@@ -948,7 +955,7 @@ if dataset_source is not None:
                         report_context
                     )
 
-            except Exception:
+            except (OpenAIError, RuntimeError, TypeError, ValueError):
                 st.error("Report generation failed.")
                 st.caption("Check the API configuration and try again.")
 

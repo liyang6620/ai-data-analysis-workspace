@@ -211,7 +211,7 @@ def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
 
         grouped = plot_df.groupby(x)[y]
         groups = [group.values for _, group in grouped]
-        labels = [str(label) for label in grouped.groups.keys()]
+        labels = [str(label) for label in grouped.groups]
 
         ax.boxplot(groups, labels=labels)
         ax.set_title(title)

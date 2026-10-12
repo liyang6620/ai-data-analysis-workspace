@@ -1,6 +1,5 @@
 import pandas as pd
 
-
 MAX_CONTEXT_COLUMNS = 50
 MAX_CATEGORY_VALUES = 5
 MAX_SAMPLE_ROWS = 5
