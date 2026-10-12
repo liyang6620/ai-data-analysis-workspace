@@ -122,6 +122,13 @@ Supported aggregation methods:
 - mean
 - count
 
+Product boundaries:
+- Use only the current dataset and its existing columns.
+- Do not request or return executable Python, R, JavaScript, or SQL.
+- Do not create joins, maps, forecasts, predictions, 3D charts, standalone images, or dashboards.
+- Keep the x-axis to at most 50 categories, pie charts to at most 12 slices, and grouped charts to at most 12 groups.
+- Keep the title to 120 characters or fewer.
+
 Filtering and exclusion rules:
 - Use only columns that exist in the dataset.
 - Do not invent columns.

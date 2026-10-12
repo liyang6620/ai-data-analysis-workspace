@@ -4,6 +4,30 @@ import pandas as pd
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+ALLOWED_CHART_TYPES = {
+    "line",
+    "bar",
+    "grouped_bar",
+    "stacked_bar",
+    "scatter",
+    "pie",
+    "histogram",
+    "boxplot",
+    "area",
+    "heatmap",
+}
+ALLOWED_AGGREGATIONS = {"sum", "mean", "count"}
+ALLOWED_TEXT_FILTERS = {
+    "startswith",
+    "equals",
+    "notequals",
+    "contains",
+    "notcontains",
+}
+ALLOWED_NUMERIC_FILTERS = {"lt", "lte", "gt", "gte", "between"}
+MAX_CHART_TITLE_LENGTH = 120
+MAX_FILTER_RULES = 10
+
 
 def get_numeric_columns(df: pd.DataFrame) -> list:
     """Return numeric columns from the dataset."""
@@ -124,6 +148,183 @@ def apply_numeric_filters(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
     return filtered_df
 
 
+def _require_column(df: pd.DataFrame, column: object, role: str) -> str:
+    if not isinstance(column, str) or not column:
+        raise ValueError(f"The chart requires a {role} column.")
+    if column not in df.columns:
+        raise ValueError(f"Column '{column}' does not exist in the dataset.")
+    return column
+
+
+def _require_numeric_data(df: pd.DataFrame, column: str, role: str) -> None:
+    values = pd.to_numeric(df[column], errors="coerce")
+    if not values.notna().any():
+        raise ValueError(f"The {role} column '{column}' must contain numeric values.")
+
+
+def validate_chart_spec(df: pd.DataFrame, chart_spec: dict) -> dict:
+    """Validate and normalise the constrained chart specification."""
+
+    if not isinstance(chart_spec, dict):
+        raise TypeError("The AI chart specification must be a JSON object.")
+
+    spec = dict(chart_spec)
+    chart_type = str(spec.get("chart_type", "")).strip().lower()
+    if chart_type not in ALLOWED_CHART_TYPES:
+        supported = ", ".join(sorted(ALLOWED_CHART_TYPES))
+        raise ValueError(f"Unsupported chart type. Choose one of: {supported}.")
+    spec["chart_type"] = chart_type
+
+    aggregation = str(spec.get("aggregation", "sum")).strip().lower()
+    if aggregation not in ALLOWED_AGGREGATIONS:
+        raise ValueError("Aggregation must be sum, mean, or count.")
+    spec["aggregation"] = aggregation
+
+    title = spec.get("title") or "AI Generated Chart"
+    if not isinstance(title, str):
+        raise TypeError("The chart title must be text.")
+    title = title.strip() or "AI Generated Chart"
+    if len(title) > MAX_CHART_TITLE_LENGTH:
+        raise ValueError(
+            f"The chart title must be {MAX_CHART_TITLE_LENGTH} characters or fewer."
+        )
+    spec["title"] = title
+
+    x = spec.get("x")
+    y = spec.get("y")
+    group_by = spec.get("group_by")
+
+    if x is not None:
+        _require_column(df, x, "x-axis")
+    if y is not None:
+        _require_column(df, y, "y-axis")
+    if group_by is not None:
+        _require_column(df, group_by, "grouping")
+
+    if chart_type == "heatmap":
+        if len(get_numeric_columns(df)) < 2:
+            raise ValueError("A heatmap requires at least two numeric columns.")
+    elif chart_type == "histogram":
+        numeric_column = y or x
+        numeric_column = _require_column(df, numeric_column, "numeric")
+        _require_numeric_data(df, numeric_column, "histogram")
+    elif chart_type == "scatter":
+        x = _require_column(df, x, "x-axis")
+        y = _require_column(df, y, "y-axis")
+        _require_numeric_data(df, x, "x-axis")
+        _require_numeric_data(df, y, "y-axis")
+    elif chart_type == "boxplot":
+        _require_column(df, x, "category")
+        y = _require_column(df, y, "numeric")
+        _require_numeric_data(df, y, "boxplot")
+    else:
+        _require_column(df, x, "x-axis")
+        if aggregation != "count":
+            y = _require_column(df, y, "y-axis")
+            _require_numeric_data(df, y, "y-axis")
+
+    grouped_types = {"grouped_bar", "stacked_bar"}
+    if chart_type in grouped_types and not group_by:
+        raise ValueError(f"{chart_type} requires a group_by column.")
+    if group_by and chart_type in {"pie", "scatter", "histogram", "boxplot", "heatmap"}:
+        raise ValueError(f"{chart_type} does not support grouped data.")
+
+    filter_column = spec.get("filter_column")
+    filter_operator = spec.get("filter_operator")
+    filter_value = spec.get("filter_value")
+    if filter_column:
+        _require_column(df, filter_column, "filter")
+        if filter_operator not in ALLOWED_TEXT_FILTERS:
+            raise ValueError("The text filter operator is not supported.")
+        if filter_value is None:
+            raise ValueError("A text filter requires a filter value.")
+    elif filter_operator is not None or filter_value is not None:
+        raise ValueError("Text filter settings require a filter_column.")
+
+    exclusions = spec.get("exclude_values") or {}
+    if not isinstance(exclusions, dict):
+        raise TypeError("exclude_values must be an object keyed by column name.")
+    exclusion_count = 0
+    for column, values in exclusions.items():
+        _require_column(df, column, "exclusion")
+        exclusion_count += len(values) if isinstance(values, list) else 1
+    if exclusion_count > 100:
+        raise ValueError("A chart can exclude at most 100 category values.")
+
+    numeric_filters = spec.get("numeric_filters") or []
+    if not isinstance(numeric_filters, list):
+        raise TypeError("numeric_filters must be a list.")
+    if len(numeric_filters) > MAX_FILTER_RULES:
+        raise ValueError(f"A chart can use at most {MAX_FILTER_RULES} numeric filters.")
+    for rule in numeric_filters:
+        if not isinstance(rule, dict):
+            raise TypeError("Each numeric filter must be an object.")
+        column = _require_column(df, rule.get("column"), "numeric filter")
+        _require_numeric_data(df, column, "numeric filter")
+        operator = rule.get("operator")
+        if operator not in ALLOWED_NUMERIC_FILTERS:
+            raise ValueError("The numeric filter operator is not supported.")
+        value = rule.get("value")
+        if operator == "between":
+            if not isinstance(value, list) or len(value) != 2:
+                raise ValueError("A between filter requires exactly two values.")
+            converted = pd.to_numeric(pd.Series(value), errors="coerce")
+            if converted.isna().any():
+                raise ValueError("Numeric filter values must be numbers.")
+        else:
+            if isinstance(value, (dict, list)):
+                raise ValueError("Numeric filter values must be single numbers.")
+            if pd.isna(pd.to_numeric(value, errors="coerce")):
+                raise ValueError("Numeric filter values must be numbers.")
+
+    filtered_df = apply_filter(df, spec)
+    filtered_df = apply_exclusions(filtered_df, spec)
+    filtered_df = apply_numeric_filters(filtered_df, spec)
+    if filtered_df.empty:
+        raise ValueError("The requested filters leave no rows to chart.")
+
+    if chart_type == "histogram":
+        numeric_column = y or x
+        _require_numeric_data(filtered_df, numeric_column, "histogram")
+    elif chart_type == "scatter":
+        numeric_pairs = filtered_df[[x, y]].apply(
+            pd.to_numeric,
+            errors="coerce",
+        ).dropna()
+        if numeric_pairs.empty:
+            raise ValueError("The requested filters leave no numeric pairs to chart.")
+    elif chart_type == "boxplot":
+        boxplot_rows = filtered_df[[x, y]].copy()
+        boxplot_rows[y] = pd.to_numeric(boxplot_rows[y], errors="coerce")
+        if boxplot_rows.dropna().empty:
+            raise ValueError("The requested filters leave no boxplot values to chart.")
+    elif chart_type != "heatmap" and aggregation != "count":
+        _require_numeric_data(filtered_df, y, "y-axis")
+
+    if x and chart_type not in {"scatter", "histogram", "heatmap"}:
+        category_count = int(filtered_df[x].nunique(dropna=True))
+        category_limit = 12 if chart_type == "pie" else 50
+        if category_count > category_limit:
+            raise ValueError(
+                f"This {chart_type} chart has {category_count} x-axis categories; "
+                f"the safe display limit is {category_limit}. Add a filter or choose "
+                "a lower-cardinality column."
+            )
+    if group_by:
+        group_count = int(filtered_df[group_by].nunique(dropna=True))
+        if group_count > 12:
+            raise ValueError(
+                f"The grouping column has {group_count} values; the display limit is 12."
+            )
+
+    if chart_type == "pie":
+        pie_values = aggregate_data(filtered_df, spec)["value"]
+        if (pie_values < 0).any() or pie_values.sum() <= 0:
+            raise ValueError("Pie chart values must be non-negative and total above zero.")
+
+    return spec
+
+
 def aggregate_data(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
     """Aggregate data based on the chart specification."""
 
@@ -168,6 +369,8 @@ def aggregate_data(df: pd.DataFrame, chart_spec: dict) -> pd.DataFrame:
 
 def render_ai_chart(df: pd.DataFrame, chart_spec: dict):
     """Render a chart based on a safe AI-generated chart specification."""
+
+    chart_spec = validate_chart_spec(df, chart_spec)
 
     chart_type = chart_spec.get("chart_type")
     x = chart_spec.get("x")

@@ -30,7 +30,8 @@ analysis questions without making an API call.
 2. Inspect its schema, missing values, duplicate rows and constant columns.
 3. Review deterministic local insights and suggested analytical questions.
 4. Build distributions, category comparisons and relationship charts locally.
-5. Optionally use OpenAI to answer questions, recommend charts and draft a report.
+5. Optionally describe a chart in natural language and receive the rendered chart
+   directly, ask focused questions, or draft a report with OpenAI.
 
 ## Key Capabilities
 
@@ -43,6 +44,10 @@ analysis questions without making an API call.
   are sent to the configured model.
 - Constrained chart execution: model output selects from supported chart types,
   aggregations and filters rather than executing generated Python code.
+- Intent-aware AI workspace: ordinary chart requests entered in question mode are
+  routed to the renderer, while explicit Python or R code requests stay in guidance.
+- Responsive workspace: narrow screens stack controls, metrics and navigation while
+  charts scale to the available mobile width.
 - Raw numeric scatter plots: relationships preserve individual observations instead
   of aggregating or converting the horizontal axis to labels.
 
@@ -68,6 +73,14 @@ CSV upload / demo dataset
 The application never evaluates model-generated code. AI chart requests are parsed
 as JSON specifications and rendered through the repository's own filtering,
 aggregation and Matplotlib functions.
+
+Supported AI chart output is deliberately bounded to line, bar, grouped or stacked
+bar, scatter, pie, histogram, boxplot, area and correlation heatmap charts. It uses
+the current dataset only, existing columns, simple filters and sum, mean or count.
+Requests for joins, maps, forecasting, 3D output, standalone images or custom
+interactive dashboards are rejected before the model is called. Display limits keep
+high-cardinality charts readable: 50 x-axis categories, 12 pie slices or group values,
+10 numeric filters and 120 title characters.
 
 ## Technology
 
@@ -143,6 +156,7 @@ to `main`.
 |   |-- chart_generator.py
 |   |-- data_loader.py
 |   |-- insight_agent.py
+|   |-- request_router.py
 |   `-- quality_checks.py
 |-- tests/
 |   |-- test_analysis.py

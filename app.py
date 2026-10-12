@@ -21,6 +21,7 @@ from src.chart_generator import (
     get_categorical_columns,
     get_numeric_columns,
     render_ai_chart,
+    validate_chart_spec,
 )
 from src.data_loader import DatasetLoadError, load_csv_dataset
 from src.insight_agent import (
@@ -32,6 +33,7 @@ from src.insight_agent import (
     suggest_analysis_questions,
 )
 from src.quality_checks import run_quality_checks
+from src.request_router import looks_like_chart_request, validate_chart_request
 
 # PAGE CONFIG
 
@@ -192,6 +194,66 @@ h1, h2, h3 {
     border-radius: 12px;
 }
 
+@media (max-width: 768px) {
+    html, body, .stApp {
+        overflow-x: hidden;
+    }
+
+    .block-container {
+        padding: 4.25rem 0.8rem 2rem;
+    }
+
+    .main-title {
+        font-size: 1.75rem;
+        line-height: 1.2;
+    }
+
+    .main-subtitle {
+        font-size: 0.95rem;
+        line-height: 1.5;
+        margin-bottom: 1.1rem;
+    }
+
+    .panel {
+        border-radius: 14px;
+        padding: 1rem;
+        margin-bottom: 0.85rem;
+    }
+
+    .panel-title {
+        font-size: 1.05rem;
+    }
+
+    div[data-testid="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        gap: 0.75rem !important;
+    }
+
+    div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+        flex: 1 1 100% !important;
+        min-width: 100% !important;
+        width: 100% !important;
+    }
+
+    [data-testid="metric-container"] {
+        padding: 0.85rem;
+        border-radius: 14px;
+    }
+
+    div.stButton > button {
+        width: 100%;
+        min-height: 3rem;
+        height: auto;
+        white-space: normal;
+    }
+
+    [data-testid="stDataFrame"],
+    [data-testid="stImage"],
+    [data-testid="stImage"] img {
+        max-width: 100% !important;
+    }
+}
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -214,7 +276,7 @@ if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 if "ai_tool" not in st.session_state:
-    st.session_state.ai_tool = "assistant"
+    st.session_state.ai_tool = "chart"
 
 if "suggested_questions" not in st.session_state:
     st.session_state.suggested_questions = []
@@ -306,6 +368,42 @@ def get_chart_data_summary(df, chart_spec):
         return {
             "error": str(e)
         }
+
+
+def render_chart_result(df, dataset_context, chart_question):
+    """Generate and immediately render a constrained chart request."""
+
+    validate_chart_request(chart_question)
+
+    with st.spinner("Building a safe chart specification..."):
+        chart_spec = recommend_chart_spec(dataset_context, chart_question)
+        chart_spec = validate_chart_spec(df, chart_spec)
+
+    st.session_state.latest_chart_spec = chart_spec
+    st.subheader("Generated Chart")
+    fig = render_ai_chart(df, chart_spec)
+    st.pyplot(fig, width="stretch")
+    plt.close(fig)
+
+    with st.expander("Chart details"):
+        st.caption(
+            "The model selected this constrained specification. The app rendered it "
+            "without executing generated code."
+        )
+        st.json(chart_spec)
+
+    chart_data_summary = get_chart_data_summary(df, chart_spec)
+    with st.spinner("Explaining the result..."):
+        chart_explanation = explain_chart_result(
+            dataset_context,
+            chart_spec,
+            chart_data_summary,
+        )
+
+    st.session_state.latest_chart_explanation = chart_explanation
+    st.subheader("What the chart shows")
+    st.write(chart_explanation)
+    return chart_explanation
 
 # SIDEBAR
 
@@ -718,31 +816,33 @@ if dataset_source is not None:
         <div class="panel">
             <div class="panel-title">AI Analysis Module</div>
             <div class="panel-text">
-                Use AI tools to ask analytical questions or automatically generate charts from natural language.
+                Describe a visual and receive the rendered chart directly, or ask a focused question about the dataset.
             </div>
         </div>
         """, unsafe_allow_html=True)
 
+        st.info(
+            "Charts are rendered directly from validated specifications; generated "
+            "code is never executed."
+        )
+        with st.expander("Supported charts and boundaries"):
+            st.markdown(
+                """
+                - **Supported:** line, bar, grouped or stacked bar, scatter, pie,
+                  histogram, boxplot, area and correlation heatmap.
+                - **Data operations:** current dataset only; existing columns; sum,
+                  mean or count; simple text, exclusion and numeric filters.
+                - **Display limits:** up to 50 x-axis categories, 12 pie slices or
+                  group values, 10 numeric filters and a 120-character title.
+                - **Not supported:** generated-code execution, dataset joins, maps,
+                  forecasting, 3D charts, standalone images or custom interactive
+                  dashboards.
+                """
+            )
+
         tool_col1, tool_col2 = st.columns(2)
 
         with tool_col1:
-
-            assistant_style = (
-                "primary"
-                if st.session_state.ai_tool == "assistant"
-                else "secondary"
-            )
-
-            st.button(
-                "Ask AI Assistant",
-                width="stretch",
-                type=assistant_style,
-                key="ai_tool_selector_assistant",
-                on_click=set_ai_tool,
-                args=("assistant",)
-            )
-
-        with tool_col2:
 
             chart_style = (
                 "primary"
@@ -751,12 +851,29 @@ if dataset_source is not None:
             )
 
             st.button(
-                "Generate AI Chart",
+                "Create Chart",
                 width="stretch",
                 type=chart_style,
                 key="ai_tool_selector_chart",
                 on_click=set_ai_tool,
                 args=("chart",)
+            )
+
+        with tool_col2:
+
+            assistant_style = (
+                "primary"
+                if st.session_state.ai_tool == "assistant"
+                else "secondary"
+            )
+
+            st.button(
+                "Ask a Question",
+                width="stretch",
+                type=assistant_style,
+                key="ai_tool_selector_assistant",
+                on_click=set_ai_tool,
+                args=("assistant",)
             )
 
         st.markdown("<br>", unsafe_allow_html=True)
@@ -767,7 +884,7 @@ if dataset_source is not None:
             <div class="panel">
                 <div class="panel-title">Ask Analytical Questions</div>
                 <div class="panel-text">
-                    Request dataset explanations, Python guidance, analytical interpretation, or business insights.
+                    Ask for explanations, calculations, code guidance or business insights. Chart requests are detected and rendered directly.
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -784,7 +901,7 @@ if dataset_source is not None:
             )
 
             if st.button(
-                "Ask AI Assistant",
+                "Ask Question",
                 width="stretch",
                 key="assistant_submit",
                 disabled=not ai_ready
@@ -798,25 +915,36 @@ if dataset_source is not None:
 
                     try:
 
-                        with st.spinner("Generating answer..."):
-
-                            answer = answer_data_question(
+                        if looks_like_chart_request(user_question):
+                            st.caption(
+                                "Chart request detected. Rendering it directly instead "
+                                "of returning plotting code."
+                            )
+                            answer = render_chart_result(
+                                df,
                                 dataset_context,
                                 user_question,
-                                st.session_state.chat_history
                             )
+                        else:
+                            with st.spinner("Generating answer..."):
+                                answer = answer_data_question(
+                                    dataset_context,
+                                    user_question,
+                                    st.session_state.chat_history
+                                )
 
-                        st.subheader("AI Answer")
-                        st.write(answer)
-
-                        st.session_state.latest_ai_answer = answer
+                            st.subheader("AI Answer")
+                            st.write(answer)
+                            st.session_state.latest_ai_answer = answer
 
                         st.session_state.chat_history.append({
                             "question": user_question,
                             "answer": answer
                         })
 
-                    except (OpenAIError, RuntimeError, TypeError, ValueError):
+                    except ValueError as exc:
+                        st.error(f"The chart request is outside the supported boundary: {exc}")
+                    except (OpenAIError, RuntimeError, TypeError):
                         st.error("AI response failed.")
                         st.caption("Check the API configuration and try again.")
 
@@ -826,7 +954,7 @@ if dataset_source is not None:
             <div class="panel">
                 <div class="panel-title">Generate AI Visualisations</div>
                 <div class="panel-text">
-                    Describe the chart you want in natural language and let the AI recommend and generate it automatically.
+                    Describe the result you want. The app turns it into a validated specification and renders the chart directly.
                 </div>
             </div>
             """, unsafe_allow_html=True)
@@ -843,7 +971,7 @@ if dataset_source is not None:
             )
 
             if st.button(
-                "Generate AI Chart",
+                "Create Chart",
                 width="stretch",
                 key="chart_submit",
                 disabled=not ai_ready
@@ -856,50 +984,10 @@ if dataset_source is not None:
                 else:
 
                     try:
-
-                        with st.spinner("Generating chart recommendation..."):
-
-                            chart_spec = recommend_chart_spec(
-                                dataset_context,
-                                chart_question
-                            )
-
-                        st.subheader("AI Chart Specification")
-                        st.json(chart_spec)
-
-                        fig = render_ai_chart(
-                            df,
-                            chart_spec
-                        )
-
-                        st.pyplot(fig)
-
-                        st.session_state.latest_chart_spec = chart_spec
-
-                        chart_data_summary = get_chart_data_summary(
-                            df,
-                            chart_spec
-                        )
-
-                        with st.spinner("Explaining chart result..."):
-                            chart_explanation = explain_chart_result(
-                                dataset_context,
-                                chart_spec,
-                                chart_data_summary
-                            )
-
-                        st.subheader("AI Chart Explanation")
-                        st.write(chart_explanation)
-
-                        st.session_state.latest_chart_explanation = chart_explanation
-
-                    except (
-                        KeyError,
-                        OpenAIError,
-                        RuntimeError,
-                        TypeError,
-                        ValueError,
-                    ):
+                        render_chart_result(df, dataset_context, chart_question)
+                    except ValueError as exc:
+                        st.error(f"The chart request is outside the supported boundary: {exc}")
+                    except (KeyError, OpenAIError, RuntimeError, TypeError):
                         st.error("Chart generation failed.")
                         st.caption("Check the request, dataset columns, and API configuration.")
 

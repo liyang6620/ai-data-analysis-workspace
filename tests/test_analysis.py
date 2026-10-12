@@ -14,9 +14,11 @@ from src.chart_generator import (
     apply_filter,
     apply_numeric_filters,
     render_ai_chart,
+    validate_chart_spec,
 )
 from src.data_loader import DatasetLoadError, load_csv_dataset
 from src.quality_checks import run_quality_checks
+from src.request_router import looks_like_chart_request, validate_chart_request
 
 
 @pytest.fixture
@@ -113,6 +115,98 @@ def test_scatter_chart_preserves_raw_observations():
     offsets = figure.axes[0].collections[0].get_offsets()
     assert offsets.tolist() == [[1.0, 10.0], [1.0, 20.0], [2.0, 30.0]]
     figure.clear()
+
+
+def test_chart_spec_is_normalised_and_validated(sample_frame):
+    result = validate_chart_spec(
+        sample_frame,
+        {
+            "chart_type": "BAR",
+            "x": "region",
+            "y": "sales",
+            "aggregation": "MEAN",
+            "title": " Average sales ",
+        },
+    )
+
+    assert result["chart_type"] == "bar"
+    assert result["aggregation"] == "mean"
+    assert result["title"] == "Average sales"
+
+
+def test_chart_spec_rejects_unknown_columns(sample_frame):
+    with pytest.raises(ValueError, match="does not exist"):
+        validate_chart_spec(
+            sample_frame,
+            {
+                "chart_type": "bar",
+                "x": "missing_column",
+                "aggregation": "count",
+            },
+        )
+
+
+def test_pie_chart_rejects_unreadable_category_count():
+    frame = pd.DataFrame({"category": list("ABCDEFGHIJKLM"), "value": range(13)})
+
+    with pytest.raises(ValueError, match="safe display limit is 12"):
+        validate_chart_spec(
+            frame,
+            {
+                "chart_type": "pie",
+                "x": "category",
+                "y": "value",
+                "aggregation": "sum",
+            },
+        )
+
+
+def test_pie_chart_rejects_negative_values():
+    frame = pd.DataFrame({"category": ["A", "B"], "value": [10, -2]})
+
+    with pytest.raises(ValueError, match="non-negative"):
+        validate_chart_spec(
+            frame,
+            {
+                "chart_type": "pie",
+                "x": "category",
+                "y": "value",
+                "aggregation": "sum",
+            },
+        )
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "Show a bar chart of sales by region",
+        "Visualise the sales trend",
+        "生成一个销售额柱状图",
+    ],
+)
+def test_chart_requests_are_detected(question):
+    assert looks_like_chart_request(question)
+
+
+def test_explicit_code_request_stays_in_question_mode():
+    assert not looks_like_chart_request("Give me Python code to plot sales by region")
+
+
+def test_heatmap_is_not_mistaken_for_a_geospatial_map():
+    assert validate_chart_request("Create a correlation heatmap")
+
+
+@pytest.mark.parametrize(
+    ("chart_request", "capability"),
+    [
+        ("Forecast next month's sales", "forecasting"),
+        ("Put customer totals on a map", "geospatial maps"),
+        ("Build an interactive dashboard", "custom interactive dashboards"),
+    ],
+)
+def test_unsupported_chart_requests_are_rejected(chart_request, capability):
+    with pytest.raises(ValueError, match=capability):
+        validate_chart_request(chart_request)
 
 
 def test_csv_loader_uses_content_fingerprint():
